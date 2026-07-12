@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Family Grocery</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:#EFF3EA;
+    --card:#FFFFFF;
+    --ink:#262A22;
+    --ink-soft:#5B6154;
+    --sage:#6B8F71;
+    --sage-dark:#4E6E54;
+    --apricot:#E2A03F;
+    --teal:#2F6E63;
+    --line:#DEE5D6;
+  }
+  html,body{ background:var(--paper); color:var(--ink); font-family:'Plus Jakarta Sans',sans-serif; }
+  .font-display{ font-family:'Fraunces',serif; }
+  .font-mono{ font-family:'IBM Plex Mono',monospace; }
+
+  .aisle-label{
+    border-bottom:2px dashed var(--sage);
+    padding-bottom:6px;
+  }
+
+  .stamp{
+    width:26px;height:26px;border-radius:9999px;
+    border:2px solid var(--sage);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0; transition:all .15s ease;
+    background:var(--card);
+  }
+  .stamp.checked{ background:var(--sage); }
+  .stamp svg{ opacity:0; transform:scale(.5); transition:all .15s ease; }
+  .stamp.checked svg{ opacity:1; transform:scale(1); }
+
+  .qty-btn{
+    width:28px;height:28px;border-radius:9999px;
+    display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--line); background:var(--card);
+    font-weight:600; color:var(--sage-dark);
+  }
+  .qty-btn:active{ transform:scale(.92); }
+
+  .fab{
+    background:var(--teal); color:white;
+    box-shadow:0 8px 24px rgba(47,110,99,.35);
+  }
+  .fab:active{ transform:scale(.97); }
+
+  .toast{ animation: rise .25s ease; }
+  @keyframes rise{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:translateY(0)} }
+
+  ::-webkit-scrollbar{ display:none; }
+</style>
+</head>
+
+<body x-data="groceryApp()" x-init="init()" class="min-h-screen pb-32">
+
+  <!-- ============ HEADER ============ -->
+  <header class="px-5 pt-6 pb-4 sticky top-0 z-20" style="background:linear-gradient(var(--paper) 82%, transparent)">
+    <p class="text-xs tracking-[0.2em] uppercase font-mono" style="color:var(--sage-dark)">Kitchen &amp; Pantry</p>
+    <h1 class="font-display text-3xl font-semibold" style="color:var(--ink)">Family Grocery</h1>
+  </header>
+
+  <main class="px-5 max-w-xl mx-auto space-y-8">
+
+    <!-- ============ RECIPE VALIDATION AREA (only when a session is loaded) ============ -->
+    <template x-if="recipeSession">
+      <section class="rounded-2xl p-4 border" style="background:#FBF3E3; border-color:#EAD6A3;">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-lg">🍽</span>
+          <h2 class="font-display text-lg font-semibold">Recipe check</h2>
+        </div>
+        <p class="text-sm mb-4" style="color:var(--ink-soft)">
+          Uncheck anything you already have at home, adjust quantities, then merge what's left into the list.
+        </p>
+
+        <div class="space-y-2 mb-4">
+          <template x-for="(item, idx) in recipeSession.items" :key="idx">
+            <div class="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5">
+              <button class="stamp" :class="{checked: item.checked}" @click="item.checked = !item.checked">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M3 8.5L6.2 11.5L13 4.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="flex-1 min-w-0" :class="{'opacity-40': !item.checked}">
+                <p class="text-sm font-medium truncate" x-text="item.name"></p>
+                <p class="text-xs font-mono" style="color:var(--ink-soft)" x-text="item.category"></p>
+              </div>
+              <input type="text" x-model="item.quantity" :disabled="!item.checked"
+                class="w-20 text-center text-sm font-mono rounded-lg py-1.5 border"
+                style="border-color:var(--line)" />
+            </div>
+          </template>
+        </div>
+
+        <button @click="mergeRecipeSession()"
+          class="w-full py-3 rounded-xl font-semibold text-white text-sm"
+          style="background:var(--sage-dark)">
+          Merge into Active Shopping List
+        </button>
+      </section>
+    </template>
+
+    <!-- ============ ADD NEW PRODUCT ============ -->
+    <section class="rounded-2xl p-4 bg-white border" style="border-color:var(--line)">
+      <button class="w-full flex items-center justify-between" @click="showAddForm = !showAddForm">
+        <h2 class="font-display text-lg font-semibold">Add new product to database</h2>
+        <span class="text-xl" style="color:var(--sage)" x-text="showAddForm ? '–' : '+'"></span>
+      </button>
+
+      <div x-show="showAddForm" x-collapse class="mt-4 space-y-3">
+        <input x-model="newProduct.name" type="text" placeholder="Product name (e.g. Oat milk)"
+          class="w-full px-3 py-2.5 rounded-lg border text-sm" style="border-color:var(--line)" />
+        <input x-model="newProduct.category" list="category-options" type="text" placeholder="Category (e.g. Dairy)"
+          class="w-full px-3 py-2.5 rounded-lg border text-sm" style="border-color:var(--line)" />
+        <datalist id="category-options">
+          <template x-for="cat in Object.keys(catalog)" :key="cat">
+            <option :value="cat"></option>
+          </template>
+        </datalist>
+        <button @click="addMasterProduct()"
+          class="w-full py-2.5 rounded-lg font-semibold text-sm text-white" style="background:var(--sage)">
+          Save to catalog
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ MASTER LIST, GROUPED BY CATEGORY ============ -->
+    <section class="space-y-7">
+      <template x-for="category in Object.keys(catalog)" :key="category">
+        <div>
+          <div class="aisle-label mb-3 flex items-center gap-2">
+            <span x-text="categoryEmoji(category)"></span>
+            <h3 class="font-display text-base font-semibold" x-text="category"></h3>
+          </div>
+
+          <div class="space-y-2">
+            <template x-for="product in catalog[category]" :key="product.id">
+              <div class="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5">
+                <button class="stamp" :class="{checked: isSelected(product.name)}" @click="toggleProduct(product)">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M3 8.5L6.2 11.5L13 4.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+
+                <p class="flex-1 min-w-0 text-sm font-medium truncate" x-text="product.name"></p>
+
+                <template x-if="isSelected(product.name)">
+                  <div class="flex items-center gap-1.5">
+                    <button class="qty-btn" @click="stepQty(product, -1)">–</button>
+                    <span class="font-mono text-sm w-8 text-center" x-text="selected[product.name].quantity"></span>
+                    <button class="qty-btn" @click="stepQty(product, 1)">+</button>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <p x-show="Object.keys(catalog).length === 0" class="text-sm text-center py-10" style="color:var(--ink-soft)">
+        Your catalog is empty — add your first product above.
+      </p>
+    </section>
+  </main>
+
+  <!-- ============ FLOATING SUBMIT BUTTON ============ -->
+  <div class="fixed bottom-0 left-0 right-0 px-5 pb-6 pt-10 pointer-events-none"
+       style="background:linear-gradient(transparent, var(--paper) 55%)">
+    <div class="max-w-xl mx-auto pointer-events-auto flex items-center gap-3">
+      <div class="flex-1 bg-white rounded-full px-4 py-2 text-sm font-mono border" style="border-color:var(--line)">
+        <span x-text="selectedCount"></span> items · <span x-text="totalQty"></span> qty
+      </div>
+      <button @click="sendToTelegram()" class="fab rounded-full px-5 py-3.5 flex items-center gap-2 font-semibold text-sm whitespace-nowrap">
+        <span>✈️</span> Update Family Telegram Group
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ TOAST ============ -->
+  <div x-show="toast" x-transition class="fixed top-4 left-1/2 -translate-x-1/2 z-50 toast">
+    <div class="bg-[var(--ink)] text-white text-sm px-4 py-2.5 rounded-full shadow-lg" x-text="toast"></div>
+  </div>
+
+<script>
+function groceryApp(){
+  return {
+    API_BASE: "", // swap for your deployed API_BASE_URL
+
+    catalog: {},               // { category: [product, ...] }
+    activeListId: null,
+    selected: {},               // { productName: { id, quantity } }  — items on the active list
+    newProduct: { name: "", category: "" },
+    showAddForm: false,
+    recipeSession: null,
+    toast: null,
+
+    emojiMap: {
+      "Dairy":"🥛","Vegetables":"🥦","Fruits":"🍎","Meat & Poultry":"🍗",
+      "Fish & Seafood":"🐟","Bakery":"🍞","Grains & Pasta":"🍝","Canned & Jarred":"🥫",
+      "Spices & Condiments":"🧂","Frozen":"🧊","Beverages":"🧃","Household":"🧽","Other":"🛒"
+    },
+    categoryEmoji(cat){ return this.emojiMap[cat] || "🛒"; },
+
+    async init(){
+      await this.loadCatalog();
+      await this.loadActiveList();
+
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("session_id");
+      if (sessionId) await this.loadRecipeSession(sessionId);
+    },
+
+    // ---------- data loading ----------
+    async loadCatalog(){
+      const res = await fetch(`${this.API_BASE}/api/master-products`);
+      this.catalog = await res.json();
+    },
+
+    async loadActiveList(){
+      const res = await fetch(`${this.API_BASE}/api/active-list`);
+      const list = await res.json();
+      this.activeListId = list.id;
+      this.selected = {};
+      for (const item of list.items){
+        this.selected[item.product_name] = { id: item.id, quantity: item.quantity };
+      }
+    },
+
+    async loadRecipeSession(sessionId){
+      const res = await fetch(`${this.API_BASE}/api/recipe-session/${sessionId}`);
+      if (!res.ok) return;
+      const session = await res.json();
+      session.id = sessionId;
+      this.recipeSession = session;
+    },
+
+    // ---------- master catalog ----------
+    async addMasterProduct(){
+      if (!this.newProduct.name.trim() || !this.newProduct.category.trim()) return;
+      const res = await fetch(`${this.API_BASE}/api/master-products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.newProduct)
+      });
+      if (res.ok){
+        this.newProduct = { name: "", category: "" };
+        this.showAddForm = false;
+        await this.loadCatalog();
+        this.showToast("Added to catalog ✓");
+      }
+    },
+
+    // ---------- selecting items onto the active list ----------
+    isSelected(name){ return !!this.selected[name]; },
+
+    async toggleProduct(product){
+      if (this.isSelected(product.name)){
+        const item = this.selected[product.name];
+        delete this.selected[product.name];
+        await fetch(`${this.API_BASE}/api/list-items/${item.id}`, { method: "DELETE" });
+      } else {
+        const res = await fetch(`${this.API_BASE}/api/active-list/items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: [{ product_name: product.name, category: product.category, quantity: "1" }] })
+        });
+        const [created] = await res.json();
+        this.selected[product.name] = { id: created.id, quantity: created.quantity };
+      }
+    },
+
+    async stepQty(product, delta){
+      const item = this.selected[product.name];
+      if (!item) return;
+      const next = Math.max(1, (parseInt(item.quantity) || 1) + delta);
+      item.quantity = String(next);
+      await fetch(`${this.API_BASE}/api/list-items/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: item.quantity })
+      });
+    },
+
+    get selectedCount(){ return Object.keys(this.selected).length; },
+    get totalQty(){
+      return Object.values(this.selected).reduce((sum, i) => sum + (parseInt(i.quantity) || 0), 0);
+    },
+
+    // ---------- recipe validation ----------
+    async mergeRecipeSession(){
+      const items = this.recipeSession.items
+        .filter(i => i.checked)
+        .map(i => ({ product_name: i.name, category: i.category, quantity: String(i.quantity) }));
+
+      if (items.length === 0){
+        this.showToast("Nothing checked to merge");
+        return;
+      }
+
+      const res = await fetch(`${this.API_BASE}/api/recipe-session/${this.recipeSession.id}/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items })
+      });
+
+      if (res.ok){
+        this.recipeSession = null;
+        window.history.replaceState({}, "", window.location.pathname);
+        await Promise.all([this.loadCatalog(), this.loadActiveList()]);
+        this.showToast("Merged into active list ✓");
+      }
+    },
+
+    // ---------- telegram ----------
+    async sendToTelegram(){
+      this.showToast("Sending to family group…");
+      const res = await fetch(`${this.API_BASE}/api/telegram/send-list`, { method: "POST" });
+      this.showToast(res.ok ? "Family group updated ✓" : "Couldn't reach Telegram");
+    },
+
+    showToast(msg){
+      this.toast = msg;
+      setTimeout(() => this.toast = null, 2200);
+    }
+  }
+}
+</script>
+</body>
+</html>
