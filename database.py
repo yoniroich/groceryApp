@@ -86,13 +86,50 @@ def set_list_telegram_message(list_id: str, chat_id: int, message_id: int) -> No
 
 
 def close_list(list_id: str) -> dict:
-    res = (
+    """
+    סוגרת את הרשימה הנוכחית.
+    מצרכים שסומנו (is_bought=True) נשארים ברשימה הנגמרת.
+    מצרכים שלא סומנו (is_bought=False) מועברים אוטומטית לרשימה פעילה חדשה.
+    """
+    # 1. שליפת כל המצרכים ברשימה הנוכחית
+    res = supabase.table("list_items").select("*").eq("list_id", list_id).execute()
+    all_items = res.data or []
+
+    bought_items = [item for item in all_items if item.get("is_bought") is True]
+    unbought_items = [item for item in all_items if not item.get("is_bought")]
+
+    # 2. סגירת הרשימה הנוכחית בסטטוס completed
+    completed_res = (
         supabase.table("shopping_lists")
         .update({"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()})
         .eq("id", list_id)
         .execute()
     )
-    return res.data[0]
+
+    # 3. אם נשארו מוצרים שלא נקנו - פותחים רשימה חדשה ומעבירים אותם אליה
+    new_list_id = None
+    if unbought_items:
+        new_list_res = supabase.table("shopping_lists").insert({"status": "active"}).execute()
+        new_list_id = new_list_res.data[0]["id"]
+
+        new_rows = [
+            {
+                "list_id": new_list_id,
+                "product_name": item["product_name"],
+                "category": item["category"],
+                "quantity": item.get("quantity", "1"),
+                "is_bought": False,
+                "source": item.get("source", "manual")
+            }
+            for item in unbought_items
+        ]
+        supabase.table("list_items").insert(new_rows).execute()
+
+    return {
+        "closed_list": completed_res.data[0] if completed_res.data else {},
+        "new_list_id": new_list_id,
+        "remaining_count": len(unbought_items)
+    }
 
 
 # ---------------------------------------------------------------

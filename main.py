@@ -140,10 +140,21 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
         data = cq.get("data", "")
         if data.startswith("done_shopping:"):
             list_id = data.split(":", 1)[1]
-            list_row = db.close_list(list_id)
-            if list_row.get("telegram_message_id"):
-                await tg.mark_message_completed(list_row["telegram_message_id"])
-            await tg.answer_callback_query(cq["id"], "Shopping list closed. Nice work! 🎉")
+            
+            # סגירת הרשימה והעברת מוצרים שלא נקנו לרשימה חדשה
+            res_summary = db.close_list(list_id)
+            remaining = res_summary.get("remaining_count", 0)
+            closed_info = res_summary.get("closed_list", {})
+            
+            if closed_info.get("telegram_message_id"):
+                await tg.mark_message_completed(closed_info["telegram_message_id"])
+            
+            if remaining > 0:
+                answer_msg = f"🛒 הקנייה הסתיימה! {remaining} מוצרים שלא סומנו הועברו לרשימה החדשה."
+            else:
+                answer_msg = "🎉 כל הכבוד! כל המוצרים סומנו והקנייה נסגרה לחלוטין."
+
+            await tg.answer_callback_query(cq["id"], answer_msg)
         return {"ok": True}
 
     if "message" in update:
