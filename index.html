@@ -112,6 +112,23 @@
       </section>
     </template>
 
+    <!-- ============ SEARCH BAR ============ -->
+<div class="relative mb-4">
+  <input 
+    type="text" 
+    x-model="searchQuery" 
+    placeholder="🔍 חפש מוצר בקטלוג..." 
+    class="w-full px-4 py-3 rounded-xl border text-sm shadow-sm outline-none transition"
+    style="border-color:var(--line); background:var(--card);"
+  />
+  <button 
+    x-show="searchQuery" 
+    @click="searchQuery = ''" 
+    class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm font-bold">
+    ✕
+  </button>
+</div>
+
     <!-- ============ ADD NEW PRODUCT ============ -->
     <section class="rounded-2xl p-4 bg-white border" style="border-color:var(--line)">
       <button class="w-full flex items-center justify-between" @click="showAddForm = !showAddForm">
@@ -138,7 +155,7 @@
 
     <!-- ============ MASTER LIST, GROUPED BY CATEGORY ============ -->
     <section class="space-y-7">
-      <template x-for="category in Object.keys(catalog)" :key="category">
+      <template x-for="category in Object.keys(filteredCatalog)" :key="category">
         <div>
           <div class="aisle-label mb-3 flex items-center gap-2">
             <span x-text="categoryEmoji(category)"></span>
@@ -146,7 +163,7 @@
           </div>
 
           <div class="space-y-2">
-            <template x-for="product in catalog[category]" :key="product.id">
+            <template x-for="product in filteredCatalog[category]" :key="product.id">
               <div class="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5">
                 <button class="stamp" :class="{checked: isSelected(product.name)}" @click="toggleProduct(product)">
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M3 8.5L6.2 11.5L13 4.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -197,6 +214,23 @@ function groceryApp(){
     API_BASE: "", // swap for your deployed API_BASE_URL
 
     catalog: {},               // { category: [product, ...] }
+    searchQuery: "",
+    get filteredCatalog() {
+      if (!this.searchQuery.trim()) return this.catalog;
+      
+      const q = this.searchQuery.toLowerCase().trim();
+      const filtered = {};
+
+      for (const [category, products] of Object.entries(this.catalog)) {
+        const matchingProducts = products.filter(p => p.name.toLowerCase().includes(q));
+        if (matchingProducts.length > 0) {
+          filtered[category] = matchingProducts;
+        }
+      }
+      return filtered;
+    },
+
+    activeListId: null,
     activeListId: null,
     selected: {},               // { productName: { id, quantity } }  — items on the active list
     newProduct: { name: "", category: "" },
