@@ -1,13 +1,9 @@
 """
 telegram_bot.py
-Thin wrapper around the raw Telegram Bot API (via httpx) — no heavy
-framework needed since we only send/edit messages and handle a
-webhook FastAPI already receives. Keeps formatting logic in one place
-so the "beautifully formatted" group message has a single source of truth.
+Thin wrapper around the raw Telegram Bot API (via httpx).
 """
 
 import os
-
 import httpx
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -34,47 +30,59 @@ CATEGORY_EMOJI = {
 
 
 def format_list_message(items: list[dict]) -> str:
-    """Builds the family-facing message, grouped by category, with
-    bought items struck through so progress is visible at a glance."""
+    """Header and summary text for the shopping message."""
     if not items:
         return "🛒 *Family Shopping List*\n\n_The list is empty right now._"
 
-    grouped: dict[str, list[dict]] = {}
-    for item in items:
-        grouped.setdefault(item["category"], []).append(item)
-
-    lines = ["🛒 *Family Shopping List*", ""]
-    for category in sorted(grouped):
-        emoji = CATEGORY_EMOJI.get(category, "🛒")
-        lines.append(f"{emoji} *{category}*")
-        for item in grouped[category]:
-            box = "✅" if item["is_bought"] else "▫️"
-            name = item["product_name"]
-            qty = item["quantity"]
-            if item["is_bought"]:
-                lines.append(f"{box} ~{name} — {qty}~")
-            else:
-                lines.append(f"{box} {name} — {qty}")
-        lines.append("")
-
-    bought = sum(1 for i in items if i["is_bought"])
-    lines.append(f"_{bought}/{len(items)} items in the cart_")
+    bought = sum(1 for i in items if i.get("is_bought"))
+    lines = [
+        "🛒 *Family Shopping List*",
+        f"📊 נאספו לעגלה: *{bought}/{len(items)}*",
+        "",
+        "_לחצו על מוצר כדי לסמן/לבטל V בסופר:_"
+    ]
     return "\n".join(lines)
 
 
-def _done_shopping_keyboard(list_id: str) -> dict:
-    return {
-        "inline_keyboard": [
-            [{"text": "🛒 Done Shopping", "callback_data": f"done_shopping:{list_id}"}]
-        ]
-    }
+def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
+    """
+    Creates an interactive inline keyboard where each item has its own toggle button,
+    followed by the final 'Done Shopping' button.
+    """
+    keyboard = []
+
+    # Sort by category and then by name
+    sorted_items = sorted(items, key=lambda x: (x.get("category", ""), x.get("product_name", "")))
+
+    for item in sorted_items:
+        is_bought = item.get("is_bought", False)
+        icon = "✅" if is_bought else "⬜"
+        item_name = item["product_name"]
+        qty = item.get("quantity", "1")
+        cat_emoji = CATEGORY_EMOJI.get(item.get("category", ""), "🛒")
+
+        # Strikethrough-like appearance or checked badge
+        button_text = f"{icon} {cat_emoji} {item_name} ({qty})"
+
+        keyboard.append([
+            {
+                "text": button_text,
+                "callback_data": f"toggle_item:{list_id}:{item['id']}"
+            }
+        ])
+
+    # Final action button at bottom
+    keyboard.append([
+        {"text": "🏁 סיימתי קנייה (סגירה והעברה)", "callback_data": f"done_shopping:{list_id}"}
+    ])
+
+    return {"inline_keyboard": keyboard}
 
 
 async def send_or_update_list_message(list_id: str, items: list[dict], existing_message_id: int | None) -> int:
-    """Sends a new message the first time, edits it on every later
-    'Update Family Telegram Group' tap so the group isn't spammed."""
+    """Sends or edits the interactive shopping message."""
     text = format_list_message(items)
-    keyboard = _done_shopping_keyboard(list_id)
+    keyboard = build_shopping_keyboard(list_id, items)
 
     async with httpx.AsyncClient() as client:
         if existing_message_id:
@@ -91,7 +99,6 @@ async def send_or_update_list_message(list_id: str, items: list[dict], existing_
             data = resp.json()
             if data.get("ok"):
                 return existing_message_id
-            # message may have been deleted in the group — fall through and send a new one
 
         resp = await client.post(
             f"{API_URL}/sendMessage",
@@ -113,13 +120,13 @@ async def mark_message_completed(message_id: int) -> None:
             json={
                 "chat_id": GROUP_CHAT_ID,
                 "message_id": message_id,
-                "text": "✅ *Shopping complete!* Great job, team.",
+                "text": "🎉 *הקנייה הסתיימה בהצלחה!* כל הכבוד לכולם.",
                 "parse_mode": "Markdown",
             },
         )
 
 
-async def answer_callback_query(callback_query_id: str, text: str) -> None:
+async def answer_callback_query(callback_query_id: str, text: str = "") -> None:
     async with httpx.AsyncClient() as client:
         await client.post(
             f"{API_URL}/answerCallbackQuery",

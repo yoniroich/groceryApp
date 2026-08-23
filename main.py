@@ -138,23 +138,50 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
     if "callback_query" in update:
         cq = update["callback_query"]
         data = cq.get("data", "")
+
+        # 1. טיפול בלחיצה על מוצר לסימון V / ביטול V
+        if data.startswith("toggle_item:"):
+            _, list_id, item_id = data.split(":", 2)
+            
+            current_list = db.get_list_with_items(list_id)
+            target_item = next((i for i in current_list.get("items", []) if i["id"] == item_id), None)
+            
+            if target_item:
+                new_status = not target_item.get("is_bought", False)
+                db.update_list_item(item_id, is_bought=new_status)
+                
+                updated_list = db.get_list_with_items(list_id)
+                msg_id = cq["message"]["message_id"]
+                await tg.send_or_update_list_message(list_id, updated_list["items"], existing_message_id=msg_id)
+                
+                feedback = "סומן כנקנה ✅" if new_status else "הוחזר לרשימה ⬜"
+                await tg.answer_callback_query(cq["id"], feedback)
+            else:
+                await tg.answer_callback_query(cq["id"], "מוצר לא נמצא")
+            return {"ok": True}
+
+        # 2. טיפול בלחיצה על "סיימתי קנייה"
         if data.startswith("done_shopping:"):
             list_id = data.split(":", 1)[1]
             
-            # סגירת הרשימה והעברת מוצרים שלא נקנו לרשימה חדשה
             res_summary = db.close_list(list_id)
             remaining = res_summary.get("remaining_count", 0)
-            closed_info = res_summary.get("closed_list", {})
+            msg_id = cq["message"]["message_id"]
             
-            if closed_info.get("telegram_message_id"):
-                await tg.mark_message_completed(closed_info["telegram_message_id"])
+            await tg.mark_message_completed(msg_id)
             
             if remaining > 0:
-                answer_msg = f"🛒 הקנייה הסתיימה! {remaining} מוצרים שלא סומנו הועברו לרשימה החדשה."
+                answer_msg = f"🛒 הקנייה הסתיימה! {remaining} מוצרים שלא סומנו הועברו לרשימה הבאה."
+                new_list_id = res_summary["new_list_id"]
+                new_list = db.get_list_with_items(new_list_id)
+                new_msg_id = await tg.send_or_update_list_message(new_list_id, new_list["items"], None)
+                db.set_list_telegram_message(new_list_id, tg.GROUP_CHAT_ID, new_msg_id)
             else:
                 answer_msg = "🎉 כל הכבוד! כל המוצרים סומנו והקנייה נסגרה לחלוטין."
 
             await tg.answer_callback_query(cq["id"], answer_msg)
+            return {"ok": True}
+
         return {"ok": True}
 
     if "message" in update:
