@@ -32,7 +32,7 @@ CATEGORY_EMOJI = {
 def format_list_message(items: list[dict]) -> str:
     """Header and summary text for the shopping message."""
     if not items:
-        return "🛒 *Family Shopping List*\n\n_The list is empty right now._"
+        return "🛒 *Family Shopping List*\n\n_הרשימה ריקה כרגע._"
 
     bought = sum(1 for i in items if i.get("is_bought"))
     lines = [
@@ -51,7 +51,6 @@ def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
     """
     keyboard = []
 
-    # Sort by category and then by name
     sorted_items = sorted(items, key=lambda x: (x.get("category", ""), x.get("product_name", "")))
 
     for item in sorted_items:
@@ -61,7 +60,6 @@ def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
         qty = item.get("quantity", "1")
         cat_emoji = CATEGORY_EMOJI.get(item.get("category", ""), "🛒")
 
-        # Strikethrough-like appearance or checked badge
         button_text = f"{icon} {cat_emoji} {item_name} ({qty})"
 
         keyboard.append([
@@ -71,7 +69,6 @@ def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
             }
         ])
 
-    # Final action button at bottom
     keyboard.append([
         {"text": "🏁 סיימתי קנייה (סגירה והעברה)", "callback_data": f"done_shopping:{list_id}"}
     ])
@@ -79,7 +76,7 @@ def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
     return {"inline_keyboard": keyboard}
 
 
-async def send_or_update_list_message(list_id: str, items: list[dict], existing_message_id: int | None) -> int:
+async def send_or_update_list_message(list_id: str, items: list[dict], existing_message_id: int | None) -> int | None:
     """Sends or edits the interactive shopping message."""
     text = format_list_message(items)
     keyboard = build_shopping_keyboard(list_id, items)
@@ -110,6 +107,10 @@ async def send_or_update_list_message(list_id: str, items: list[dict], existing_
             },
         )
         data = resp.json()
+        if not data.get("ok"):
+            print(f"Telegram API Error: {data}")
+            return None
+            
         return data["result"]["message_id"]
 
 
@@ -120,7 +121,7 @@ async def mark_message_completed(message_id: int) -> None:
             json={
                 "chat_id": GROUP_CHAT_ID,
                 "message_id": message_id,
-                "text": "🎉 *הקנייה הסתיימה בהצלחה!* כל הכבוד לכולם.",
+                "text": "🎉 *הקנייה הסתיימה בהצלחה!* כל הכבוד.",
                 "parse_mode": "Markdown",
             },
         )

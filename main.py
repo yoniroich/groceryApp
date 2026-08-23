@@ -1,11 +1,11 @@
 """
-main.py - Fixed Static HTML Routing with Session Support
+main.py - Fixed Static HTML Routing with Session Support and Resilient Bot Updates
 """
 
 import os
 import httpx
 from fastapi import FastAPI, HTTPException, Header, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -48,14 +48,10 @@ async def scrape_url(url: str) -> str:
     return ""
 
 # =================================================================
-# Serve Static Frontend (Updated to explicitly support session_id)
+# Serve Static Frontend
 # =================================================================
 @app.get("/")
 def serve_frontend(session_id: str | None = None):
-    """
-    מגיש את קובץ האתר. אם מגיע session_id, הוא נשאר ב-URL
-    כך שה-JavaScript של קלוד יוכל לקרוא אותו מתוך window.location.search
-    """
     return FileResponse("index.html")
 
 # =================================================================
@@ -122,7 +118,8 @@ async def send_list_to_telegram():
         items=full["items"],
         existing_message_id=full.get("telegram_message_id"),
     )
-    db.set_list_telegram_message(full["id"], tg.GROUP_CHAT_ID, message_id)
+    if message_id:
+        db.set_list_telegram_message(full["id"], tg.GROUP_CHAT_ID, message_id)
     return {"telegram_message_id": message_id}
 
 # =================================================================
@@ -139,7 +136,7 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
         cq = update["callback_query"]
         data = cq.get("data", "")
 
-        # 1. טיפול בלחיצה על מוצר לסימון V / ביטול V
+        # 1. טיפול בסימון V / ביטול V על מוצר בודד
         if data.startswith("toggle_item:"):
             _, list_id, item_id = data.split(":", 2)
             
@@ -160,7 +157,7 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
                 await tg.answer_callback_query(cq["id"], "מוצר לא נמצא")
             return {"ok": True}
 
-        # 2. טיפול בלחיצה על "סיימתי קנייה"
+        # 2. טיפול בלחיצה על סיום קנייה
         if data.startswith("done_shopping:"):
             list_id = data.split(":", 1)[1]
             
@@ -172,10 +169,12 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
             
             if remaining > 0:
                 answer_msg = f"🛒 הקנייה הסתיימה! {remaining} מוצרים שלא סומנו הועברו לרשימה הבאה."
-                new_list_id = res_summary["new_list_id"]
-                new_list = db.get_list_with_items(new_list_id)
-                new_msg_id = await tg.send_or_update_list_message(new_list_id, new_list["items"], None)
-                db.set_list_telegram_message(new_list_id, tg.GROUP_CHAT_ID, new_msg_id)
+                new_list_id = res_summary.get("new_list_id")
+                if new_list_id:
+                    new_list = db.get_list_with_items(new_list_id)
+                    new_msg_id = await tg.send_or_update_list_message(new_list_id, new_list["items"], None)
+                    if new_msg_id:
+                        db.set_list_telegram_message(new_list_id, tg.GROUP_CHAT_ID, new_msg_id)
             else:
                 answer_msg = "🎉 כל הכבוד! כל המוצרים סומנו והקנייה נסגרה לחלוטין."
 
@@ -198,8 +197,7 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
             if text_content.startswith("/start"):
                 await tg.send_dm(
                     chat_id,
-                    "👋 Hi! Send me a recipe (paste the text or a link, or send an image) and I'll pull out "
-                    "the ingredients for you to review before they go on the family list.",
+                    "👋 שלום! שלחו לי מתכון (טקסט, קישור, או תמונה) ואחלץ ממנו את המצרכים עבורכם.",
                 )
                 return {"ok": True}
 
