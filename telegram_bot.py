@@ -48,6 +48,7 @@ def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
     """
     Creates an interactive inline keyboard where each item has its own toggle button,
     followed by the final 'Done Shopping' button.
+    Keeps callback_data under the 64-byte Telegram limit.
     """
     keyboard = []
 
@@ -62,15 +63,17 @@ def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
 
         button_text = f"{icon} {cat_emoji} {item_name} ({qty})"
 
+        # Shorter payload: 't:<item_id>' ensures length < 50 bytes (under 64-byte limit)
         keyboard.append([
             {
                 "text": button_text,
-                "callback_data": f"toggle_item:{list_id}:{item['id']}"
+                "callback_data": f"t:{item['id']}"
             }
         ])
 
+    # Shorter payload: 'done:<list_id>'
     keyboard.append([
-        {"text": "🏁 סיימתי קנייה (סגירה והעברה)", "callback_data": f"done_shopping:{list_id}"}
+        {"text": "🏁 סיימתי קנייה (סגירה והעברה)", "callback_data": f"done:{list_id}"}
     ])
 
     return {"inline_keyboard": keyboard}

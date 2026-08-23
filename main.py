@@ -136,10 +136,12 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
         cq = update["callback_query"]
         data = cq.get("data", "")
 
-        # 1. טיפול בסימון V / ביטול V על מוצר בודד
-        if data.startswith("toggle_item:"):
-            _, list_id, item_id = data.split(":", 2)
+        # 1. טיפול בסימון V / ביטול V (תחילית t:<item_id>)
+        if data.startswith("t:"):
+            item_id = data.split(":", 1)[1]
             
+            active = db.get_or_create_active_list()
+            list_id = active["id"]
             current_list = db.get_list_with_items(list_id)
             target_item = next((i for i in current_list.get("items", []) if i["id"] == item_id), None)
             
@@ -157,8 +159,8 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
                 await tg.answer_callback_query(cq["id"], "מוצר לא נמצא")
             return {"ok": True}
 
-        # 2. טיפול בלחיצה על סיום קנייה
-        if data.startswith("done_shopping:"):
+        # 2. טיפול בסיום קנייה (תחילית done:<list_id>)
+        if data.startswith("done:"):
             list_id = data.split(":", 1)[1]
             
             res_summary = db.close_list(list_id)
