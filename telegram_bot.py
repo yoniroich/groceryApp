@@ -32,46 +32,48 @@ CATEGORY_EMOJI = {
 def format_list_message(items: list[dict]) -> str:
     """Header and summary text for the shopping message."""
     if not items:
-        return "🛒 *Family Shopping List*\n\n_הרשימה ריקה כרגע._"
+        return "🛒 *רשימת קניות משפחתית*\n\n_הרשימה ריקה כרגע._"
 
     bought = sum(1 for i in items if i.get("is_bought"))
     lines = [
-        "🛒 *Family Shopping List*",
+        "🛒 *רשימת קניות משפחתית*",
         f"📊 נאספו לעגלה: *{bought}/{len(items)}*",
         "",
-        "_לחצו על מוצר כדי לסמן/לבטל V בסופר:_"
+        "_לחצו על המוצרים לסימון V בסופר:_"
     ]
     return "\n".join(lines)
 
 
 def build_shopping_keyboard(list_id: str, items: list[dict]) -> dict:
     """
-    Creates an interactive inline keyboard where each item has its own toggle button,
+    Arranges item toggle buttons in 2 columns for a compact view,
     followed by the final 'Done Shopping' button.
-    Keeps callback_data under the 64-byte Telegram limit.
     """
     keyboard = []
-
     sorted_items = sorted(items, key=lambda x: (x.get("category", ""), x.get("product_name", "")))
 
+    row = []
     for item in sorted_items:
         is_bought = item.get("is_bought", False)
         icon = "✅" if is_bought else "⬜"
         item_name = item["product_name"]
         qty = item.get("quantity", "1")
-        cat_emoji = CATEGORY_EMOJI.get(item.get("category", ""), "🛒")
 
-        button_text = f"{icon} {cat_emoji} {item_name} ({qty})"
+        # Compact label for 2 columns
+        button_text = f"{icon} {item_name} ({qty})"
+        row.append({
+            "text": button_text,
+            "callback_data": f"t:{item['id']}"
+        })
 
-        # Shorter payload: 't:<item_id>' ensures length < 50 bytes (under 64-byte limit)
-        keyboard.append([
-            {
-                "text": button_text,
-                "callback_data": f"t:{item['id']}"
-            }
-        ])
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
 
-    # Shorter payload: 'done:<list_id>'
+    if row:
+        keyboard.append(row)
+
+    # Action buttons at bottom
     keyboard.append([
         {"text": "🏁 סיימתי קנייה (סגירה והעברה)", "callback_data": f"done:{list_id}"}
     ])

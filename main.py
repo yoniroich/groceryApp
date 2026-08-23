@@ -1,5 +1,5 @@
 """
-main.py - Fixed Static HTML Routing with Session Support and Resilient Bot Updates
+main.py - Fixed Static HTML Routing with Direct Item Lookup and Multi-column Layout
 """
 
 import os
@@ -136,30 +136,28 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
         cq = update["callback_query"]
         data = cq.get("data", "")
 
-        # 1. טיפול בסימון V / ביטול V (תחילית t:<item_id>)
+        # 1. סימון מוצר ישירות לפי item_id ב-DB
         if data.startswith("t:"):
             item_id = data.split(":", 1)[1]
             
-            active = db.get_or_create_active_list()
-            list_id = active["id"]
-            current_list = db.get_list_with_items(list_id)
-            target_item = next((i for i in current_list.get("items", []) if i["id"] == item_id), None)
-            
-            if target_item:
-                new_status = not target_item.get("is_bought", False)
+            res = db.supabase.table("list_items").select("*").eq("id", item_id).execute()
+            if res.data:
+                item = res.data[0]
+                list_id = item["list_id"]
+                new_status = not item.get("is_bought", False)
                 db.update_list_item(item_id, is_bought=new_status)
-                
+
                 updated_list = db.get_list_with_items(list_id)
                 msg_id = cq["message"]["message_id"]
                 await tg.send_or_update_list_message(list_id, updated_list["items"], existing_message_id=msg_id)
-                
+
                 feedback = "סומן כנקנה ✅" if new_status else "הוחזר לרשימה ⬜"
                 await tg.answer_callback_query(cq["id"], feedback)
             else:
                 await tg.answer_callback_query(cq["id"], "מוצר לא נמצא")
             return {"ok": True}
 
-        # 2. טיפול בסיום קנייה (תחילית done:<list_id>)
+        # 2. סיום קנייה
         if data.startswith("done:"):
             list_id = data.split(":", 1)[1]
             
